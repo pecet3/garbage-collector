@@ -2,11 +2,82 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "object.h"
+#include "ref_counting.h"
+
+void refcount_dec(object_t *obj)
+{
+    if (obj == NULL)
+    {
+        return;
+    }
+    obj->ref_count--;
+    if (obj->ref_count == 0)
+    {
+        refcount_free(obj);
+    }
+}
+
+void refcount_free(object_t *obj)
+{
+    if (obj == NULL)
+    {
+        return;
+    }
+    switch (obj->kind)
+    {
+    case INTEGER:
+        break;
+    case FLOAT:
+        break;
+    case STRING:
+    {
+        free(obj->data.v_string);
+        break;
+    }
+    case VECTOR3:
+    {
+        refcount_dec(obj->data.v_vector3.x);
+        refcount_dec(obj->data.v_vector3.y);
+        refcount_dec(obj->data.v_vector3.z);
+        break;
+    }
+    case ARRAY:
+    {
+        array_t arr = obj->data.v_array;
+        for (int i = 0; i < arr.size; i++)
+        {
+            refcount_dec(arr.elements[i]);
+        }
+        free(obj->data.v_array.elements);
+        break;
+    }
+    }
+    free(obj);
+}
+
+void refcount_inc(object_t *obj)
+{
+    if (obj == NULL)
+    {
+        return;
+    }
+    obj->ref_count++;
+}
+
+object_t *new_object()
+{
+    object_t *obj = calloc(1, sizeof(object_t));
+    if (obj == NULL)
+    {
+        return NULL;
+    }
+    obj->ref_count = 1;
+    return obj;
+}
 
 object_t *new_integer(int value)
 {
-    object_t *obj = malloc(sizeof(object_t));
+    object_t *obj = new_object();
     if (obj == NULL)
     {
         return NULL;
@@ -20,7 +91,7 @@ object_t *new_integer(int value)
 
 object_t *new_float(float value)
 {
-    object_t *obj = malloc(sizeof(object_t));
+    object_t *obj = new_object();
     if (obj == NULL)
     {
         return NULL;
@@ -38,7 +109,7 @@ object_t *new_string(char *value)
     {
         return NULL;
     }
-    object_t *obj = malloc(sizeof(object_t));
+    object_t *obj = new_object();
     if (obj == NULL)
     {
         return NULL;
@@ -62,13 +133,18 @@ object_t *new_vector3(object_t *x, object_t *y, object_t *z)
         return NULL;
     }
 
-    object_t *obj = malloc(sizeof(object_t));
+    object_t *obj = new_object();
     if (obj == NULL)
     {
         return NULL;
     }
 
     obj->kind = VECTOR3;
+
+    refcount_inc(x);
+    refcount_inc(y);
+    refcount_inc(z);
+
     obj->data.v_vector3.x = x;
     obj->data.v_vector3.y = y;
     obj->data.v_vector3.z = z;
@@ -203,14 +279,18 @@ bool array_set(object_t *obj, size_t index, object_t *value)
     {
         return false;
     }
-
+    refcount_inc(value);
+    if (obj->data.v_array.elements[index] != NULL)
+    {
+        refcount_dec(obj->data.v_array.elements[index]);
+    }
     obj->data.v_array.elements[index] = value;
     return true;
 }
 
 object_t *new_array(size_t size)
 {
-    object_t *obj = malloc(sizeof(object_t));
+    object_t *obj = new_object();
     if (obj == NULL)
     {
         return NULL;

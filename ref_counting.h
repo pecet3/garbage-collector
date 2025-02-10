@@ -39,6 +39,7 @@ typedef struct Object
 {
     object_kind_t kind;
     object_data_t data;
+    int ref_count;
 } object_t;
 
 // Funkcje
